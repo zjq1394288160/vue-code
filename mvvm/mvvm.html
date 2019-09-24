@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>vue双向绑定原理</title>
+</head>
+<body>
+    <div id="app">
+        <input type="text" v-model='count' />
+        <input type="button" value="增加" @click="add" />
+        <input type="button" value="减少" @click="reduce" />
+        <div>{{count}}</div>
+    </div>
+</body>
+</html>
+<script>
+
+class myVue {
+    constructor(options) {
+        this.$el = options.el;
+        this.$data = options.data;
+        this.$options = options;
+        this.$methods = options.methods;
+        if(this.$el){ // 如果有 挂载点
+            new Observer(this.$data);
+            new Compiler(this);
+        } else {
+            alert('请添加挂载点')
+        }
+    }
+}
+
+class Observer {  // 观察者
+    constructor(datas) {
+        this.init(datas)
+    }
+    init(data) {
+        if (!data || typeof data !== "object") {
+            return;
+        }
+        Object.keys(data).forEach(key => {
+            this.defineReactive(data, key, data[key]);
+        });
+    }
+    defineReactive(data, key, value) {
+        // 递归监听所有属性
+        this.init(value);
+        var dep = new Dep();
+        Object.defineProperty(data, key, {
+            get: function () {
+                if (Dep.target) {
+                    dep.addSub(Dep.target); // 添加订阅
+                }
+                return value;
+            },
+            set: function (newVal) {
+                if (value !== newVal) {
+                    value = newVal;
+                    dep.notify(); // 通知订阅者更新
+                }
+            }
+        });
+    }
+}
+
+class Watcher { // 渲染Watcher
+    constructor(vm, prop, callback) {
+        this.vm = vm;
+        this.prop = prop;
+        this.callback = callback; // Watcher的回调
+        this.value = this.get();
+    }
+    get() {
+        Dep.target = this; // 设置 Dep.target 为当前Watcher
+        const value = this.vm.$data[this.prop]; // 执行监听器里的 get方法
+        Dep.target = null; // 取值完成后 把Dep.target置为null
+        return value;
+    }
+    update() { // 更新Watcher
+        const value = this.vm.$data[this.prop];
+        const oldVal = this.value;
+        if (value !== oldVal) {
+            this.value = value;
+            this.callback(value);
+        }
+    }
+}
+
+
+class Dep { // 订阅器
+    constructor() {
+        console.log('dep')
+        this.subs = new Set(); 
+    }
+    addSub(sub) {
+        this.subs.add(sub);
+        console.log('addSub')
+    }
+    notify(key) {
+        this.subs.forEach(sub => {
+            sub.update(); 
+        });
+        console.log('notify')
+    }
+}
+
+class Compiler {
+    constructor(root) {
+        this.vm = root;
+        this.el = document.querySelector(root.$el);
+        this.fragment = null;
+        this.init();
+    }
+    init() {
+        this.fragment = this.nodeFragment(this.el);
+        this.compileNode(this.fragment);
+        this.el.appendChild(this.fragment); //解析完成添加到元素中
+    }
+    nodeFragment(el) { 
+        const fragment = document.createDocumentFragment();
+        let child = el.firstChild;
+        // 将子节点，全部移动文档片段里 (fragment)
+        while (child) {
+            fragment.appendChild(child);
+            child = el.firstChild;
+        }
+        console.log(fragment, 'fragment')
+        return fragment;
+    }
+    compileNode(fragment) {
+        let childNodes = fragment.childNodes;
+        console.log(childNodes, 'childNodes');
+        [...childNodes].forEach(node => {
+            if (this.isElementNode(node)) {
+                this.compile(node);
+            }
+            let reg = /\{\{(.*)\}\}/; // 正则匹配{{ }}里的变量
+            let text = node.textContent;
+            if (reg.test(text)) {
+                console.log(node)
+                let prop = reg.exec(text)[1];
+                this.compileText(node, prop); // 替换模板
+            }
+
+            // 编译子节点
+            if (node.childNodes && node.childNodes.length) {
+                this.compileNode(node);
+            }
+        });
+    }
+    compile(node) {
+        let nodeAttrs = node.attributes;
+        console.log([...nodeAttrs]);
+        [...nodeAttrs].forEach(attr => {
+            let name = attr.name;
+            if (this.isDirective(name)) {
+                let value = attr.value;
+                if (name === "v-model") {
+                    this.compileModel(node, value);
+                }
+            }
+            if (this.isClick(name)) {
+                let value = attr.value;
+                const method = this.vm.$methods[value].bind(this.vm.$data);
+                node.addEventListener('click', method);
+            }    
+        });
+    }
+    compileModel(node, prop) {
+        let val = this.vm.$data[prop];
+        this.updateModel(node, val);
+        new Watcher(this.vm, prop, (value) => {
+            this.updateModel(node, value);
+        });
+        node.addEventListener('input', e => {
+            let newValue = e.target.value;
+            if (val === newValue) {
+                return;
+            }
+            this.vm.$data[prop] = newValue;
+        });
+    }
+    compileText(node, prop) {
+        let text = this.vm.$data[prop];
+        this.updateView(node, text);
+        new Watcher(this.vm, prop, (value) => {
+            this.updateView(node, value);
+        });
+    }
+    updateModel(node, value) {
+        node.value = value;
+    }
+    updateView(node, value) {
+        node.textContent = value;
+    }
+    isDirective(attr) { // 判断属性是否为指令
+        return attr.indexOf('v-') !== -1;
+    }
+    isClick(attr) {
+        return attr.indexOf('@click') !== -1;
+    }
+    isElementNode(node) { // 判断是否是元素节点
+        return node.nodeType === 1;
+    }
+}
+</script>
+<script>
+new myVue({
+    el: '#app',
+    data: {
+        count: 0
+    },
+    methods: {
+        add() {
+            this.count++;
+        },
+        reduce() {
+            this.count--;
+        }
+    }
+});
+</script>

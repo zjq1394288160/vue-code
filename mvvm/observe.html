@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>vue数据劫持</title>
+</head>
+<body>
+</body>
+</html>
+<script>
+let target = {
+  get(obj, key, receiver) {
+    console.log('===========触发get===========');
+    return Reflect.get(obj, key, receiver);
+  },
+  set(obj, key, value, receiver) {
+    console.log('===========触发set===========');
+    obj[key] = value;
+    return Reflect.set(obj, key, value, receiver);
+  },
+}
+
+var person = {name: '张三', say: '我是路人甲', run: '我会跑步'};
+
+let newObj = new Proxy(person, target);
+console.log(newObj.run)
+newObj.say = '我是路人乙';
+newObj.eat = '我要吃饭';
+console.dir(person)
+
+var arr = ['one', 'two', 'three']
+let otherObj = new Proxy(arr, target);
+console.log(otherObj[0])
+otherObj[1] = 'new-two';
+otherObj[3] = '4';
+console.dir(arr)
+
+function defineReactive(obj, key, value) {
+    Object.defineProperty(obj, key, {
+        enumerable: true, // 可枚举
+        configurable: true, // 可配置的
+        get: function() {
+            console.log('===========触发get===========');
+            return value;
+        },
+        set: function(newValue) {
+            console.log('===========触发set===========');
+            value= newValue;
+        }
+    });
+}
+
+var person = {name: '张三', say: '我是路人甲', run: '我会跑步'};
+
+function Observer(value) {
+    const keys = Object.keys(value)
+    keys.forEach(k => {
+        defineReactive(value, k, value[k]);
+    });
+}
+Observer(person)
+console.log(person.run)
+person.say = '我是路人乙';
+person.eat = '我要吃饭';  // 没有任何输出
+console.dir(person)
+</script>
